@@ -2,7 +2,7 @@
 from sense_emu import SenseHat
 import time
 import threading
-import  vlc
+import vlc
 
 sense = SenseHat()
 
@@ -16,7 +16,7 @@ state = state_init
 
 roomTemp = 0
 roomHumid = 0
-showerTime = 10
+showerTime = 60
 waterTemp = 40
 time_prev = time.time()
 
@@ -61,7 +61,7 @@ def shower():
     time_start = time.time()
     timer = timerThread(1, "timer", showerTime, time_start)
     tempAjust = waterTempThread(1, "tempAjust")
-    music = vlc.MediaPlayer("fade music.mp3")
+    music = vlc.MediaPlayer("song.mp3")
     music.play()
     timer.start()
     tempAjust.start()
@@ -76,18 +76,22 @@ class timerThread (threading.Thread):
         self.name = name
         self.time2count = time2count
         self.time_start = time_start
+        self.heaterSetted = False
 
     def run(self):
         while True:
-            time_left = self.time2count - (time.time() - self.time_start)
+            time_left = int(self.time2count - (time.time() - self.time_start))
             time_scaled = time_left / self.time2count * 64
             pixels = [G if i < time_scaled else B for i in range(64)]
             sense.set_pixels(pixels)
-
+            #refresh rate
+            time.sleep(0.5)
             if time_left < 0:
                 break
-            if time_left  == 30:
+            if time_left  == 30 and not self.heaterSetted:
                 print("set heater")
+                self.heaterSetted = True
+            
 
         while True:
             time.sleep(1)
@@ -104,10 +108,10 @@ class waterTempThread (threading.Thread):
 
     def run(self):
         while True:
-            if sense.get_temperature < waterTemp:
-                print("too high")
-            elif sense.get_temperature < waterTemp:
+            if sense.get_temperature() < waterTemp - 2:
                 print("too low")
+            elif sense.get_temperature() > waterTemp + 2:
+                print("too high")
 
             time.sleep(3)
 
