@@ -1,6 +1,8 @@
-from sense_hat import SenseHat
+#from sense_hat import SenseHat
+from sense_emu import SenseHat
 import time
 import threading
+import  vlc
 
 sense = SenseHat()
 
@@ -12,9 +14,10 @@ state_measure = 1
 state_shower = 2
 state = state_init
 
-roomTemp = 0 
+roomTemp = 0
 roomHumid = 0
 showerTime = 10
+waterTemp = 40
 time_prev = time.time()
 
 sys_start = True
@@ -26,40 +29,44 @@ def init():
     global time_prev
     # measure data when system start
     if sys_start == True:
-      state = state_measure
-      sys_start = False
-      return
-    
+        state = state_measure
+        sys_start = False
+        return
+
     time_now = time.time()
     if time_now - time_prev > 5:
-      state = state_measure
-      time_prev = time_now
-
+        state = state_measure
+        time_prev = time_now
 
 
 def measure():
     global roomTemp
     global roomHumid
     global state
-    
+
     roomTemp = sense.get_temperature
     roomHumid = sense.get_humidity()
     if roomHumid > 80:
-      # set ventliation
-      print('set ventliation')
+        # set ventliation
+        print('set ventliation')
     else:
-      print('turn off ventilation')
+        print('turn off ventilation')
     state = state_init
-    
+
     if True:
-       state = state_shower
-       
+        state = state_shower
 
 
 def shower():
     time_start = time.time()
     timer = timerThread(1, "timer", showerTime, time_start)
+    tempAjust = waterTempThread(1, "tempAjust")
+    music = vlc.MediaPlayer("fade music.mp3")
+    music.play()
     timer.start()
+    tempAjust.start()
+    while True:
+        time.sleep(10)
 
 
 class timerThread (threading.Thread):
@@ -69,37 +76,53 @@ class timerThread (threading.Thread):
         self.name = name
         self.time2count = time2count
         self.time_start = time_start
-        
+
     def run(self):
-      while True:
-        time_left = self.time2count - (time.time() - self.time_start)
-        time_scaled = time_left/ self.time2count * 64
-        pixels = [G if i < time_scaled else B for i in range(64)]
-        sense.set_pixels(pixels)
-        if time_left < 0:
-          break
-      
-      while True:
-        time.sleep(1)
-        sense.set_pixels([G for i in range(64)])
-        time.sleep(1)
-        sense.set_pixels([B for i in range(64)])
+        while True:
+            time_left = self.time2count - (time.time() - self.time_start)
+            time_scaled = time_left / self.time2count * 64
+            pixels = [G if i < time_scaled else B for i in range(64)]
+            sense.set_pixels(pixels)
 
- 
+            if time_left < 0:
+                break
+            if time_left  == 30:
+                print("set heater")
 
-def run():
-  while True:
-    
-    if state == 0:
-      init()
-    elif state == 1:
-      measure()
-    elif state == 2:
-      shower()
-      
+        while True:
+            time.sleep(1)
+            sense.set_pixels([G for i in range(64)])
+            time.sleep(1)
+            sense.set_pixels([B for i in range(64)])
+
+
+class waterTempThread (threading.Thread):
+    def __init__(self, threadID, name):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+
+    def run(self):
+        while True:
+            if sense.get_temperature < waterTemp:
+                print("too high")
+            elif sense.get_temperature < waterTemp:
+                print("too low")
+
+            time.sleep(3)
+
         
-    
+def run():
+    while True:
+
+        if state == 0:
+            init()
+        elif state == 1:
+            measure()
+        elif state == 2:
+            shower()
+
+
 if __name__ == '__main__':
     print('success')
     run()
-
