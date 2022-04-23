@@ -1,5 +1,6 @@
 #from sense_hat import SenseHat
 from sense_emu import SenseHat
+from paho.mqtt import client as mqtt_client
 import time
 import threading
 import vlc
@@ -19,9 +20,19 @@ roomHumid = 0
 showerTime = 60
 waterTemp = 40
 time_prev = time.time()
-
 sys_start = True
 
+broker = "test.mosquitto.org"
+port = 1883
+topic_water_temp = "Bathroom/Mqtt"
+
+def publish(client,topic,msg):
+    print(msg)
+    client.publish(topic, payload=msg)
+
+def connect_broker(client):
+    #client.username_pw_set("username","pw")
+    client.connect(broker, port)
 
 def init():
     global sys_start
@@ -39,44 +50,47 @@ def init():
         time_prev = time_now
 
 
-def measure():
+def measure(client):
     global roomTemp
     global roomHumid
     global state
 
     roomTemp = sense.get_temperature
     roomHumid = sense.get_humidity()
+    topic = "Bathroom/Ventilation"
     if roomHumid > 80:
         # set ventliation
-        print('set ventliation')
+        publish(client, topic, "turn on")
     else:
-        print('turn off ventilation')
+        publish(client, topic, "turn off")
     state = state_init
 
     if True:
         state = state_shower
 
 
-def shower():
+def shower(client):
     time_start = time.time()
-    timer = timerThread(1, "timer", showerTime, time_start)
-    tempAjust = waterTempThread(1, "tempAjust")
+    timer = timerThread(1, "timer", showerTime, time_start, client)
+    tempAdjust = waterTempThread(1, "tempAjust", client)
     music = vlc.MediaPlayer("song.mp3")
     music.play()
     timer.start()
-    tempAjust.start()
+    tempAdjust.start()
     while True:
         time.sleep(10)
 
 
 class timerThread (threading.Thread):
-    def __init__(self, threadID, name, time2count, time_start):
+    def __init__(self, threadID, name, time2count, time_start, client):
         threading.Thread.__init__(self)
         self.threadID = threadID
         self.name = name
         self.time2count = time2count
         self.time_start = time_start
         self.heaterSetted = False
+        self.client = client
+        self.topic = "Bathroom/heater"
 
     def run(self):
         while True:
@@ -89,7 +103,7 @@ class timerThread (threading.Thread):
             if time_left < 0:
                 break
             if time_left  == 30 and not self.heaterSetted:
-                print("set heater")
+                publish(self.client, self.topic, "turn on heater")
                 self.heaterSetted = True
             
 
@@ -101,32 +115,36 @@ class timerThread (threading.Thread):
 
 
 class waterTempThread (threading.Thread):
-    def __init__(self, threadID, name):
+    def __init__(self, threadID, name, client):
         threading.Thread.__init__(self)
         self.threadID = threadID
         self.name = name
+        self.client = client
+        self.topic = "Bathroom/water-temp"
 
     def run(self):
         while True:
             if sense.get_temperature() < waterTemp - 2:
-                print("too low")
+                publish(self.client, self.topic, "water temperature is too low")
             elif sense.get_temperature() > waterTemp + 2:
-                print("too high")
+                publish(self.client, self.topic, "water temperature is too high")
 
             time.sleep(3)
 
         
 def run():
+    
+    client = mqtt_client.Client() # create client object
+    connect_broker(client)
+    
     while True:
-
         if state == 0:
             init()
         elif state == 1:
-            measure()
+            measure(client)
         elif state == 2:
-            shower()
+            shower(client)
 
 
 if __name__ == '__main__':
-    print('success')
     run()
