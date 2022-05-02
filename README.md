@@ -1,4 +1,4 @@
-# Smart-Bathroom-elec3442
+# Smart-Bathroom
 This is an simulation of project "Smart Bathroom"
 
 ## Dependency
